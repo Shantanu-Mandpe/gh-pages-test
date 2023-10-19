@@ -1,4 +1,4 @@
-const fs = require("fs")
+import fs from 'fs'
 
 document.getElementById('modifyButton').addEventListener('click', function () {
     const fileInput = document.getElementById('fileInput');
