@@ -27,6 +27,7 @@ app.post('/upload', (req, res) => {
     if (err) {
       return res.status(500).send(err);
     }
+    console.log("Upload clicked")
 
     const data = new Uint8Array(Buffer.from('Hello Node.js'));
       fs.writeFile(uploadPath, data, (err) => {
