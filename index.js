@@ -11,7 +11,7 @@ app.use(fileUpload());
 
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
-});
+    console.log(document.compatMode)});
 
 app.post('/upload', (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
