@@ -11,40 +11,64 @@ app.use(fileUpload());
 
 app.use(express.static(__dirname));
 
+function modifyAndCreateFile(uploadedFile, newFilename, callback) {
+    // Read the content of the uploaded file
+    fs.readFile(uploadedFile, 'utf8', (readErr, fileContent) => {
+        if (readErr) {
+            callback(readErr, null);
+            return;
+        }
+
+        // Append data to the file content
+        const newData = 'Additional data added to the file.\n';
+        const modifiedContent = fileContent + newData;
+
+        // Generate a unique new file name
+        const modifiedFilename = newFilename + uuidv4() + path.extname(uploadedFile);
+
+        // Path for the newly created modified file
+        const modifiedPath = path.join(__dirname, 'modified', modifiedFilename);
+
+        // Write the modified content to the new file
+        fs.writeFile(modifiedPath, modifiedContent, (writeErr) => {
+            if (writeErr) {
+                callback(writeErr, null);
+                return;
+            }
+
+            callback(null, modifiedPath);
+        });
+    });
+}
+
 app.post('/modify', (req, res) => {
     if (!req.files || Object.keys(req.files).length === 0) {
         return res.status(400).send('No files were uploaded.');
     }
 
     const uploadedFile = req.files.file;
-    const newFilename = uuidv4() + path.extname(uploadedFile.name);
-    const uploadPath = path.join(__dirname, 'uploads', newFilename);
-    const modifiedPath = path.join(__dirname, 'modified', newFilename);
+    const newFilename = req.body.newFilename;
 
-    uploadedFile.mv(uploadPath, (err) => {
+    uploadedFile.mv(path.join(__dirname, 'uploads', uploadedFile.name), (err) => {
         if (err) {
             return res.status(500).send(err);
         }
 
-        // Here, you can append data to the file using fs
-        const newData = 'Additional data to append to the file.\n';
-
-        fs.appendFile(uploadPath, newData, (err) => {
-            if (err) {
-                return res.status(500).send(err);
-            }
-
-            fs.rename(uploadPath, modifiedPath, (err) => {
-                if (err) {
-                    return res.status(500).send(err);
+        modifyAndCreateFile(
+            path.join(__dirname, 'uploads', uploadedFile.name),
+            newFilename,
+            (modifyErr, modifiedPath) => {
+                if (modifyErr) {
+                    return res.status(500).send(modifyErr);
                 }
-                res.download(modifiedPath, uploadedFile.name, (err) => {
-                    if (err) {
-                        return res.status(500).send(err);
+
+                res.download(modifiedPath, newFilename + path.extname(uploadedFile.name), (downloadErr) => {
+                    if (downloadErr) {
+                        return res.status(500).send(downloadErr);
                     }
                 });
-            });
-        });
+            }
+        );
     });
 });
 
