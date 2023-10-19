@@ -3,6 +3,7 @@ const fileUpload = require('express-fileupload');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+const readLine = require('readline')
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -11,34 +12,36 @@ app.use(fileUpload());
 
 app.use(express.static(__dirname));
 
-function modifyAndCreateFile(uploadedFile, newFilename, callback) {
-    // Read the content of the uploaded file
-    fs.readFile(uploadedFile, 'utf8', (readErr, fileContent) => {
-        if (readErr) {
-            callback(readErr, null);
-            return;
-        }
+function getSchemas(schema, schemaObject, header) {
+    console.log(header)
+    header.forEach((line) => {
+        const split = line.split(":")
 
-        // Append data to the file content
-        const newData = 'Additional data added to the file.\n';
-        const modifiedContent = fileContent + newData;
+        // add elements to the main schema
+        schema.sensorID.push(split[0])
+        schema.sensorName.push(String(split[1]).trim())
+        schema.eventSize.push(split[2])
+        //schema.parseFormat.push(String(dataTypeEquivalent(split[3])).split(",").at(0))
+        schema.parseFormat.push(((split[3])).split(",").at(0))
+        schema.axisNames.push(String(split[4]).trim().toUpperCase())
+        schema.scalingFactor.push(split[5])
+    })
 
-        // Generate a unique new file name
-        const modifiedFilename = newFilename + uuidv4() + path.extname(uploadedFile);
+    // add elements to the parquet object schema
+    schema.sensorName.forEach((id) => {
+        schemaObject[id] = {}
+        schemaObject[id]["optional"] = true
+        schemaObject[id]["fields"] = {}
+        let axis = String(schema.axisNames.at(schema.sensorName.indexOf(id))).split(",")
+        axis.forEach((axis) => {
+            schemaObject[id]["fields"][axis.trim().toUpperCase()] = {}
+            schemaObject[id]["fields"][axis.trim().toUpperCase()]["type"] = String(schema.parseFormat.at(schema.sensorName.indexOf(id)))
+            schemaObject[id]["fields"][axis.trim().toUpperCase()]["optional"] = true
+        })
+    })
 
-        // Path for the newly created modified file
-        const modifiedPath = path.join(__dirname, 'modified', modifiedFilename);
-
-        // Write the modified content to the new file
-        fs.writeFile(modifiedPath, modifiedContent, (writeErr) => {
-            if (writeErr) {
-                callback(writeErr, null);
-                return;
-            }
-
-            callback(null, modifiedPath);
-        });
-    });
+    console.log(schema)
+    return schema
 }
 
 app.post('/modify', (req, res) => {
@@ -47,28 +50,93 @@ app.post('/modify', (req, res) => {
     }
 
     const uploadedFile = req.files.file;
-    const newFilename = req.body.newFilename;
+    const newFilename = uuidv4() + path.extname(uploadedFile.name);
+    const uploadPath = path.join(__dirname, 'uploads', newFilename);
+    const modifiedPath = path.join(__dirname, 'modified', newFilename);
 
-    uploadedFile.mv(path.join(__dirname, 'uploads', uploadedFile.name), (err) => {
+    uploadedFile.mv(uploadPath, (err) => {
         if (err) {
             return res.status(500).send(err);
         }
 
-        modifyAndCreateFile(
-            path.join(__dirname, 'uploads', uploadedFile.name),
-            newFilename,
-            (modifyErr, modifiedPath) => {
-                if (modifyErr) {
-                    return res.status(500).send(modifyErr);
-                }
+        //declare variables
+        let test = 0
+        let newData1 = ""
+        let newData  = ""
 
-                res.download(modifiedPath, newFilename + path.extname(uploadedFile.name), (downloadErr) => {
-                    if (downloadErr) {
-                        return res.status(500).send(downloadErr);
+        let schema = {
+            sensorID: [],
+            sensorName: [],
+            eventSize: [],
+            parseFormat: [],
+            axisNames: [],
+            scalingFactor: []
+        }
+        let schemaObject = {}
+        let header = []
+
+        const stream = fs.createReadStream(uploadPath)
+        const rl = readLine.createInterface({
+            input: stream,
+            crlfDelay: Infinity
+        })
+
+        console.log("Reading file lines")
+
+
+        rl.on('line', (line) => {
+            const binaryData = Buffer.from(line)
+            console.log(line)
+
+            if ((/^(1.0|1.1)/).test(line)) {
+                if (line == "1.0") {
+                    //variable_schema = 0
+                    header.push(line)
+                    test = test + binaryData.byteLength
+                } else if (line == "1.1") {
+                    //variable_schema = 1
+                    header.push(line)
+                    test = test + binaryData.byteLength
+                }
+            }
+            else if ((/^\d:/).test(line) || (/^\d\d:/).test(line)) {
+                header.push(line)
+                test = test + binaryData.byteLength
+                //udf1++
+            }
+        })
+
+        rl.on('close', () => {
+            schema = getSchemas(schema,schemaObject,header)
+            console.log(schema)
+            console.log("File reading complete")
+        })   
+
+        // Here, you can append data to the file using fs
+        const data = new Uint8Array(Buffer.from(schema.axisNames));
+
+        fs.writeFile(uploadPath, data, (err) => {
+            if (err) {
+                return res.status(500).send(err);
+            }
+
+            // res.download(modifiedPath, uploadedFile.name, (err) => {
+            //     if (err) {
+            //         return res.status(500).send(err);
+            //     }
+            // });
+
+            fs.rename(uploadPath, modifiedPath, (err) => {
+                if (err) {
+                    return res.status(500).send(err);
+                }
+                res.download(modifiedPath, uploadedFile.name, (err) => {
+                    if (err) {
+                        return res.status(500).send(err);
                     }
                 });
-            }
-        );
+            });
+        });
     });
 });
 
