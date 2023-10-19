@@ -1,4 +1,4 @@
-import fs from 'fs'
+import fs from './node_modules/express/lib/express'
 
 document.getElementById('modifyButton').addEventListener('click', function () {
     const fileInput = document.getElementById('fileInput');
