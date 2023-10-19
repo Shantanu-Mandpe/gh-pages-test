@@ -1,5 +1,3 @@
-import fs from './node_modules/express/lib/express'
-
 document.getElementById('modifyButton').addEventListener('click', function () {
     const fileInput = document.getElementById('fileInput');
     const newFilename = document.getElementById('newFilename').value;
@@ -10,22 +8,26 @@ document.getElementById('modifyButton').addEventListener('click', function () {
     }
 
     const selectedFile = fileInput.files[0];
+    console.log('Selected File:', selectedFile.name); // Log the selected file's name to the console
 
-    fs.writeFile(selectedFile, "Hello Worlds", (err) => {
-        if (err)
-            console.log(err);
-        else {
-            console.log("File written successfully\n");
-            console.log("The written has the following contents:");
-        }
-    }); 
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
 
-    const modifiedFile = new File([selectedFile], newFilename, { type: selectedFile.type });
-    const downloadLink = document.createElement('a');
-    downloadLink.href = URL.createObjectURL(modifiedFile);
-    downloadLink.download = newFilename;
-    downloadLink.style.display = 'none';
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    fetch('/modify', {
+        method: 'POST',
+        body: formData,
+    })
+        .then(response => response.blob())
+        .then(blob => {
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = newFilename;
+            downloadLink.style.display = 'none';
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        })
+        .catch(error => {
+            console.error('An error occurred:', error);
+        });
 });
